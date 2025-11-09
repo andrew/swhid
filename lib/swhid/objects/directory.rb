@@ -18,13 +18,15 @@ module Swhid
         def default_perms
           case type
           when :dir
-            "040000"
+            "40000"
           when :file
             "100644"
           when :exec
             "100755"
           when :symlink
             "120000"
+          when :rev
+            "160000"
           else
             raise ValidationError, "Unknown entry type: #{type}"
           end

@@ -29,16 +29,16 @@ class TestCrossImplementation < Minitest::Test
       { name: "config", type: :dir, target: "591dfe784a2e9ccc63aaba1cb68a765734310d98" },
       { name: "public", type: :dir, target: "9588bf4522c2b4648bfd1c61d175d1f88c1ad4a5" },
       { name: "development.sqlite3", type: :file, target: "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" },
-      { name: "doc", type: :dir, target: "154705c6aa1c8ead8c99c7916373e3c44012057f" },
+      { name: "doc", type: :dir, target: "154705c6aa1c8ead8c99c7915373e3c44012057f" },
       { name: "db", type: :dir, target: "85f157bdc39356b7bc7de9d0099b4ced8b3b382c" },
       { name: "log", type: :dir, target: "5e3d3941c51cce73352dff89c805a304ba96fffe" },
       { name: "script", type: :dir, target: "1b278423caf176da3f3533592012502aa10f566c" },
       { name: "test", type: :dir, target: "035f0437c080bfd8711670b3e8677e686c69c763" },
       { name: "vendor", type: :dir, target: "7c0dc9ad978c1af3f9a4ce061e50f5918bd27138" },
       { name: "will_paginate", type: :rev, perms: "160000", target: "3d531e169db92a16a9a8974f0ae6edf52e52659e" },
-      { name: "order", type: :dir, target: "62cdb7020ff920e5aa642c3d4066950dd1f01f4d" },
-      { name: "order.", type: :file, target: "0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33" },
-      { name: "order0", type: :file, target: "bbe960a25ea311d21d40669e93df2003ba9b90a2" }
+      { name: "order", type: :dir, perms: "40000", target: "62cdb7020ff920e5aa642c3d4066950dd1f01f4d" },
+      { name: "order.", type: :file, perms: "40000", target: "0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33" },
+      { name: "order0", type: :file, perms: "40000", target: "bbe960a25ea311d21d40669e93df2003ba9b90a2" }
     ]
 
     swhid = Swhid.from_directory(entries)
@@ -49,14 +49,17 @@ class TestCrossImplementation < Minitest::Test
   def test_revision_linus_torvalds_matches_python
     # From Python: revision_example (Linus Torvalds, Linux 4.2-rc2)
     # Expected ID: bc0195aad0daa2ad5b0d76cce22b167bc3435590
+    # Python uses: datetime.datetime(2015, 7, 12, 15, 10, 30, tzinfo=linus_tz)
+    # where linus_tz = datetime.timezone(datetime.timedelta(minutes=-420))
+    # This gives Unix timestamp: 1436739030 (not 1436735430!)
     metadata = {
       directory: "85a74718d377195e1efd0843ba4f3260bad4fe07",
       parents: ["01e2d0627a9a6edb24c37db45db5ecb31e9de808"],
       author: "Linus Torvalds <torvalds@linux-foundation.org>",
-      author_timestamp: 1436735430,
+      author_timestamp: 1436739030,
       author_timezone: "-0700",
       committer: "Linus Torvalds <torvalds@linux-foundation.org>",
-      committer_timestamp: 1436735430,
+      committer_timestamp: 1436739030,
       committer_timezone: "-0700",
       message: "Linux 4.2-rc2\n"
     }
@@ -73,10 +76,10 @@ class TestCrossImplementation < Minitest::Test
       directory: "85a74718d377195e1efd0843ba4f3260bad4fe07",
       parents: ["01e2d0627a9a6edb24c37db45db5ecb31e9de808"],
       author: "Linus Torvalds <torvalds@linux-foundation.org>",
-      author_timestamp: 1436735430,
+      author_timestamp: 1436739030,
       author_timezone: "-0700",
       committer: "Linus Torvalds <torvalds@linux-foundation.org>",
-      committer_timestamp: 1436735430,
+      committer_timestamp: 1436739030,
       committer_timezone: "-0700",
       message: "Linux 4.2-rc2\n",
       extra_headers: [

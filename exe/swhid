@@ -1,0 +1,163 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "swhid"
+require "optparse"
+require "json"
+
+class SwhidCLI
+  def initialize(args)
+    @args = args
+    @options = {
+      type: nil,
+      format: "text",
+      qualifiers: {}
+    }
+  end
+
+  def run
+    parse_options!
+
+    case @command
+    when "parse"
+      parse_swhid
+    when "content"
+      compute_content_swhid
+    when "help"
+      show_help
+    else
+      show_help
+    end
+  rescue => e
+    puts "Error: #{e.message}"
+    exit 1
+  end
+
+  private
+
+  def parse_options!
+    parser = OptionParser.new do |opts|
+      opts.banner = "Usage: swhid [command] [options]"
+      opts.separator ""
+      opts.separator "Commands:"
+      opts.separator "  parse <swhid>     Parse and validate a SWHID"
+      opts.separator "  content           Generate SWHID for content from stdin"
+      opts.separator "  help              Show this help message"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on("-f", "--format FORMAT", "Output format (text, json)") do |format|
+        @options[:format] = format
+      end
+
+      opts.on("-q", "--qualifier KEY=VALUE", "Add qualifier") do |qual|
+        key, value = qual.split("=", 2)
+        @options[:qualifiers][key.to_sym] = value
+      end
+
+      opts.on("-h", "--help", "Show this help") do
+        puts opts
+        exit
+      end
+    end
+
+    parser.parse!(@args)
+    @command = @args.shift || "help"
+  end
+
+  def parse_swhid
+    swhid_string = @args.shift
+    unless swhid_string
+      puts "Error: SWHID string required"
+      exit 1
+    end
+
+    swhid = Swhid.parse(swhid_string)
+
+    case @options[:format]
+    when "json"
+      output_json(swhid)
+    else
+      output_text(swhid)
+    end
+  end
+
+  def compute_content_swhid
+    content = $stdin.read
+
+    swhid = Swhid.from_content(content)
+
+    unless @options[:qualifiers].empty?
+      swhid = Swhid::Identifier.new(
+        object_type: swhid.object_type,
+        object_hash: swhid.object_hash,
+        qualifiers: @options[:qualifiers]
+      )
+    end
+
+    case @options[:format]
+    when "json"
+      output_json(swhid)
+    else
+      puts swhid.to_s
+    end
+  end
+
+  def output_text(swhid)
+    puts "SWHID: #{swhid.to_s}"
+    puts "Core:  #{swhid.core_swhid}"
+    puts "Type:  #{swhid.object_type}"
+    puts "Hash:  #{swhid.object_hash}"
+
+    unless swhid.qualifiers.empty?
+      puts "Qualifiers:"
+      swhid.qualifiers.each do |key, value|
+        puts "  #{key}: #{value}"
+      end
+    end
+  end
+
+  def output_json(swhid)
+    data = {
+      swhid: swhid.to_s,
+      core: swhid.core_swhid,
+      object_type: swhid.object_type,
+      object_hash: swhid.object_hash,
+      qualifiers: swhid.qualifiers
+    }
+    puts JSON.pretty_generate(data)
+  end
+
+  def show_help
+    puts <<~HELP
+      swhid - Generate and parse SoftWare Hash IDentifiers
+
+      Usage:
+        swhid parse <swhid>              Parse and validate a SWHID
+        swhid content [options]          Generate SWHID for content from stdin
+
+      Options:
+        -f, --format FORMAT              Output format (text, json)
+        -q, --qualifier KEY=VALUE        Add qualifier to generated SWHID
+        -h, --help                       Show this help
+
+      Examples:
+        # Parse a SWHID
+        swhid parse swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2
+
+        # Generate SWHID from file content
+        cat file.txt | swhid content
+
+        # Generate SWHID with qualifiers
+        cat file.txt | swhid content -q origin=https://github.com/example/repo
+
+        # Output as JSON
+        swhid parse swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2 -f json
+
+      For more information, visit: https://www.swhid.org/
+    HELP
+  end
+end
+
+SwhidCLI.new(ARGV).run

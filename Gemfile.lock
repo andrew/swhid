@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    swhid (0.2.0)
+    swhid (0.2.1)
 
 GEM
   remote: https://rubygems.org/
@@ -53,7 +53,7 @@ CHECKSUMS
   rdoc (6.15.1) sha256=28bfac73cd8b226a8079f53a564ceaccdb5b4480e34335100001570ddb1a481a
   reline (0.6.2) sha256=1dad26a6008872d59c8e05244b119347c9f2ddaf4a53dce97856cd5f30a02846
   stringio (3.1.7) sha256=5b78b7cb242a315fb4fca61a8255d62ec438f58da2b90be66048546ade4507fa
-  swhid (0.2.0)
+  swhid (0.2.1)
   tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f
 
 BUNDLED WITH

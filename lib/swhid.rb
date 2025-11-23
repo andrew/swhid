@@ -8,6 +8,7 @@ require_relative "swhid/objects/revision"
 require_relative "swhid/objects/release"
 require_relative "swhid/objects/snapshot"
 require_relative "swhid/from_filesystem"
+require_relative "swhid/from_git"
 
 module Swhid
   class Error < StandardError; end

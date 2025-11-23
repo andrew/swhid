@@ -151,12 +151,13 @@ swhid = Swhid::Identifier.new(
     visit: "swh:1:snp:d7f1b9eb7ccb596c2622c4780febaa02549830f9",
     anchor: "swh:1:rev:2db189928c94d62a3b4757b3eec68f0a4d4113f0",
     path: "/src/main.rb",
-    lines: "10-20"
+    lines: "10-20",
+    bytes: "0-100"
   }
 )
 
 puts swhid.to_s
-# => "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;origin=https://github.com/example/repo;visit=swh:1:snp:...;anchor=swh:1:rev:...;path=/src/main.rb;lines=10-20"
+# => "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;origin=https://github.com/example/repo;visit=swh:1:snp:...;anchor=swh:1:rev:...;path=/src/main.rb;lines=10-20;bytes=0-100"
 ```
 
 ### CLI Usage
@@ -181,6 +182,40 @@ swh:1:cnt:9daeafb9864cf43055ae93beb0afd6c7d144bfa4
 
 $ echo "Hello, World!" | swhid content
 swh:1:cnt:96898574d1b88e619be24fd90bb4cd399acbc5ca
+```
+
+**Generate SWHID from directory**
+
+```bash
+$ swhid directory /path/to/directory
+swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904
+```
+
+**Generate SWHID from git commit**
+
+```bash
+$ swhid revision /path/to/repo
+swh:1:rev:bc0195aad0daa2ad5b0d76cce22b167bc3435590
+
+$ swhid revision /path/to/repo main
+swh:1:rev:bc0195aad0daa2ad5b0d76cce22b167bc3435590
+
+$ swhid revision /path/to/repo abc123
+swh:1:rev:bc0195aad0daa2ad5b0d76cce22b167bc3435590
+```
+
+**Generate SWHID from git tag**
+
+```bash
+$ swhid release /path/to/repo v1.0.0
+swh:1:rel:2b10839e32c4c476e9d94492756bb1a3e1ec4aa8
+```
+
+**Generate SWHID from git snapshot**
+
+```bash
+$ swhid snapshot /path/to/repo
+swh:1:snp:6e65b86363953b780d92b0a928f3e8fcdd10db36
 ```
 
 **Add qualifiers**

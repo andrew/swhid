@@ -69,7 +69,10 @@ module Swhid
         sorted_entries = entries.sort_by(&:sort_key)
 
         sorted_entries.map do |entry|
-          "#{entry.perms} #{entry.name}\0#{entry.target_hash}"
+          # Convert name to binary UTF-8 to match target_hash encoding
+          name_binary = entry.name.encode(Encoding::UTF_8).force_encoding(Encoding::BINARY)
+          perms_binary = entry.perms.encode(Encoding::UTF_8).force_encoding(Encoding::BINARY)
+          "#{perms_binary} #{name_binary}\0#{entry.target_hash}"
         end.join
       end
 

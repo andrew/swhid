@@ -24,6 +24,14 @@ class SwhidCLI
       parse_swhid
     when "content"
       compute_content_swhid
+    when "directory"
+      compute_directory_swhid
+    when "revision"
+      compute_revision_swhid
+    when "release"
+      compute_release_swhid
+    when "snapshot"
+      compute_snapshot_swhid
     when "help"
       show_help
     else
@@ -41,9 +49,13 @@ class SwhidCLI
       opts.banner = "Usage: swhid [command] [options]"
       opts.separator ""
       opts.separator "Commands:"
-      opts.separator "  parse <swhid>     Parse and validate a SWHID"
-      opts.separator "  content           Generate SWHID for content from stdin"
-      opts.separator "  help              Show this help message"
+      opts.separator "  parse <swhid>          Parse and validate a SWHID"
+      opts.separator "  content                Generate SWHID for content from stdin"
+      opts.separator "  directory <path>       Generate SWHID for directory"
+      opts.separator "  revision <repo> [ref]  Generate SWHID for git revision/commit"
+      opts.separator "  release <repo> <tag>   Generate SWHID for git release/tag"
+      opts.separator "  snapshot <repo>        Generate SWHID for git snapshot"
+      opts.separator "  help                   Show this help message"
       opts.separator ""
       opts.separator "Options:"
 
@@ -104,6 +116,124 @@ class SwhidCLI
     end
   end
 
+  def compute_directory_swhid
+    path = @args.shift
+    unless path
+      puts "Error: Directory path required"
+      exit 1
+    end
+
+    unless File.exist?(path)
+      puts "Error: Path does not exist: #{path}"
+      exit 1
+    end
+
+    unless File.directory?(path)
+      puts "Error: Path is not a directory: #{path}"
+      exit 1
+    end
+
+    swhid = Swhid::FromFilesystem.from_directory_path(path)
+
+    unless @options[:qualifiers].empty?
+      swhid = Swhid::Identifier.new(
+        object_type: swhid.object_type,
+        object_hash: swhid.object_hash,
+        qualifiers: @options[:qualifiers]
+      )
+    end
+
+    case @options[:format]
+    when "json"
+      output_json(swhid)
+    else
+      puts swhid.to_s
+    end
+  end
+
+  def compute_revision_swhid
+    repo_path = @args.shift
+    unless repo_path
+      puts "Error: Repository path required"
+      exit 1
+    end
+
+    ref = @args.shift || "HEAD"
+
+    swhid = Swhid::FromGit.from_revision(repo_path, ref)
+
+    unless @options[:qualifiers].empty?
+      swhid = Swhid::Identifier.new(
+        object_type: swhid.object_type,
+        object_hash: swhid.object_hash,
+        qualifiers: @options[:qualifiers]
+      )
+    end
+
+    case @options[:format]
+    when "json"
+      output_json(swhid)
+    else
+      puts swhid.to_s
+    end
+  end
+
+  def compute_release_swhid
+    repo_path = @args.shift
+    unless repo_path
+      puts "Error: Repository path required"
+      exit 1
+    end
+
+    tag_name = @args.shift
+    unless tag_name
+      puts "Error: Tag name required"
+      exit 1
+    end
+
+    swhid = Swhid::FromGit.from_release(repo_path, tag_name)
+
+    unless @options[:qualifiers].empty?
+      swhid = Swhid::Identifier.new(
+        object_type: swhid.object_type,
+        object_hash: swhid.object_hash,
+        qualifiers: @options[:qualifiers]
+      )
+    end
+
+    case @options[:format]
+    when "json"
+      output_json(swhid)
+    else
+      puts swhid.to_s
+    end
+  end
+
+  def compute_snapshot_swhid
+    repo_path = @args.shift
+    unless repo_path
+      puts "Error: Repository path required"
+      exit 1
+    end
+
+    swhid = Swhid::FromGit.from_snapshot(repo_path)
+
+    unless @options[:qualifiers].empty?
+      swhid = Swhid::Identifier.new(
+        object_type: swhid.object_type,
+        object_hash: swhid.object_hash,
+        qualifiers: @options[:qualifiers]
+      )
+    end
+
+    case @options[:format]
+    when "json"
+      output_json(swhid)
+    else
+      puts swhid.to_s
+    end
+  end
+
   def output_text(swhid)
     puts "SWHID: #{swhid.to_s}"
     puts "Core:  #{swhid.core_swhid}"
@@ -134,8 +264,12 @@ class SwhidCLI
       swhid - Generate and parse SoftWare Hash IDentifiers
 
       Usage:
-        swhid parse <swhid>              Parse and validate a SWHID
-        swhid content [options]          Generate SWHID for content from stdin
+        swhid parse <swhid>                   Parse and validate a SWHID
+        swhid content [options]               Generate SWHID for content from stdin
+        swhid directory <path> [options]      Generate SWHID for directory
+        swhid revision <repo> [ref] [options] Generate SWHID for git revision/commit
+        swhid release <repo> <tag> [options]  Generate SWHID for git release/tag
+        swhid snapshot <repo> [options]       Generate SWHID for git snapshot
 
       Options:
         -f, --format FORMAT              Output format (text, json)
@@ -148,6 +282,20 @@ class SwhidCLI
 
         # Generate SWHID from file content
         cat file.txt | swhid content
+
+        # Generate SWHID from directory
+        swhid directory /path/to/dir
+
+        # Generate SWHID from git commit
+        swhid revision /path/to/repo
+        swhid revision /path/to/repo main
+        swhid revision /path/to/repo abc123
+
+        # Generate SWHID from git tag
+        swhid release /path/to/repo v1.0.0
+
+        # Generate SWHID from git snapshot
+        swhid snapshot /path/to/repo
 
         # Generate SWHID with qualifiers
         cat file.txt | swhid content -q origin=https://github.com/example/repo

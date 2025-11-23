@@ -39,6 +39,11 @@ module Swhid
           lines << author_line
         end
 
+        extra_headers = metadata[:extra_headers] || []
+        extra_headers.each do |key, value|
+          lines << format_header_line(key, value)
+        end
+
         result = lines.join("\n") + "\n"
 
         if metadata[:message]
@@ -52,6 +57,11 @@ module Swhid
         tz = timezone || "+0000"
         person_escaped = person.gsub("\n", "\n ")
         "#{prefix} #{person_escaped} #{timestamp} #{tz}"
+      end
+
+      def self.format_header_line(key, value)
+        value_escaped = value.gsub("\n", "\n ")
+        "#{key} #{value_escaped}"
       end
 
       def self.extract_target(target)

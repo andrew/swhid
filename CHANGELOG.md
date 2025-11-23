@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+## [0.3.1] - 2025-11-23
+
+### Fixed
+- Snapshot implementation now includes HEAD symbolic reference
+- Extra headers extraction for signed commits (gpgsig, mergetag, etc.)
+- Tag-of-tag support (tags pointing to other tag objects)
+- Extra headers extraction for signed tags
+
 ## [0.3.0] - 2025-11-23
 
 - `directory` CLI command - Generate SWHID for directory from filesystem

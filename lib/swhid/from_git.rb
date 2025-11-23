@@ -22,8 +22,8 @@ module Swhid
         message: commit.message
       }
 
-      # Extract extra headers if present
-      extra_headers = extract_extra_headers(commit)
+      # Extract extra headers if present (like gpgsig, svn headers, etc)
+      extra_headers = extract_extra_headers(repo, commit)
       metadata[:extra_headers] = extra_headers unless extra_headers.empty?
 
       Swhid.from_revision(metadata)
@@ -42,6 +42,7 @@ module Swhid
       if tag_obj.is_a?(Rugged::Tag::Annotation)
         target_type = case tag_obj.target
                       when Rugged::Commit then "rev"
+                      when Rugged::Tag::Annotation then "rel"
                       when Rugged::Tree then "dir"
                       when Rugged::Blob then "cnt"
                       else "rev"
@@ -59,6 +60,10 @@ module Swhid
           metadata[:author_timezone] = format_timezone(tag_obj.tagger[:time])
         end
 
+        # Extract extra headers if present (like gpgsig for signed tags)
+        extra_headers = extract_tag_extra_headers(repo, tag_obj)
+        metadata[:extra_headers] = extra_headers unless extra_headers.empty?
+
         Swhid.from_release(metadata)
       else
         # Lightweight tag - points directly to commit
@@ -70,12 +75,27 @@ module Swhid
       repo = Rugged::Repository.new(repo_path)
       branches = []
 
+      # Check for HEAD first
+      head_path = File.join(repo.path, "HEAD")
+      if File.exist?(head_path)
+        head_content = File.read(head_path).strip
+        if head_content.start_with?("ref:")
+          # HEAD is a symbolic ref
+          target_ref = head_content.sub("ref: ", "")
+          branches << {
+            name: "HEAD",
+            target_type: "alias",
+            target: target_ref
+          }
+        end
+      end
+
       # Get all references (branches and tags)
       repo.references.each do |ref|
         ref_name = ref.name
 
         if ref.type == :symbolic
-          # This is an alias (like HEAD pointing to refs/heads/main)
+          # This is an alias (symbolic ref)
           target_ref_name = ref.target
           branches << {
             name: ref_name,
@@ -125,11 +145,75 @@ module Swhid
       format("%s%02d%02d", sign, hours, minutes)
     end
 
-    def self.extract_extra_headers(commit)
+    def self.extract_extra_headers(repo, commit)
       # Rugged doesn't expose extra headers directly
-      # We would need to parse the raw commit object for this
-      # For now, return empty array
-      []
+      # We need to parse the raw commit object
+      raw_data = repo.read(commit.oid).data
+      lines = raw_data.split("\n")
+
+      extra_headers = []
+      in_headers = true
+
+      lines.each do |line|
+        # Stop when we hit the blank line before the message
+        if line.empty?
+          in_headers = false
+          next
+        end
+
+        next unless in_headers
+
+        # Skip standard headers
+        next if line.start_with?("tree ", "parent ", "author ", "committer ")
+
+        # Extract extra headers (like gpgsig, mergetag, svn-repo-uuid, etc)
+        if line.start_with?(" ")
+          # Continuation of previous header
+          if extra_headers.any?
+            extra_headers.last[1] += "\n#{line[1..]}"
+          end
+        elsif line.include?(" ")
+          key, value = line.split(" ", 2)
+          extra_headers << [key, value]
+        end
+      end
+
+      extra_headers
+    end
+
+    def self.extract_tag_extra_headers(repo, tag)
+      # Parse raw tag object for extra headers
+      raw_data = repo.read(tag.oid).data
+      lines = raw_data.split("\n")
+
+      extra_headers = []
+      in_headers = true
+
+      lines.each do |line|
+        # Stop when we hit the blank line before the message
+        if line.empty?
+          in_headers = false
+          next
+        end
+
+        next unless in_headers
+
+        # Skip standard tag headers
+        next if line.start_with?("object ", "type ", "tag ", "tagger ")
+
+        # Extract extra headers (like gpgsig for signed tags)
+        if line.start_with?(" ")
+          # Continuation of previous header
+          if extra_headers.any?
+            extra_headers.last[1] += "\n#{line[1..]}"
+          end
+        elsif line.include?(" ")
+          key, value = line.split(" ", 2)
+          extra_headers << [key, value]
+        end
+      end
+
+      extra_headers
     end
   end
 end

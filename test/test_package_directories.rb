@@ -67,7 +67,7 @@ class TestPackageDirectories < Minitest::Test
           FileUtils.mkdir_p(dest)
         else
           FileUtils.mkdir_p(File.dirname(dest))
-          entry.extract(dest)
+          File.binwrite(dest, entry.get_input_stream.read)
         end
       end
     end

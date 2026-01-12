@@ -32,6 +32,7 @@ class TestPackageDirectories < Minitest::Test
   end
 
   def extract_tar_gz(tarball_path, extract_path)
+    permissions = {}
     File.open(tarball_path, "rb") do |file|
       Zlib::GzipReader.wrap(file) do |gz|
         Gem::Package::TarReader.new(gz) do |tar|
@@ -42,7 +43,11 @@ class TestPackageDirectories < Minitest::Test
             elsif entry.file?
               FileUtils.mkdir_p(File.dirname(dest))
               File.binwrite(dest, entry.read)
-              File.chmod(entry.header.mode, dest) if entry.header.mode
+              mode = entry.header.mode
+              if mode
+                File.chmod(mode, dest) rescue nil
+                permissions[dest] = mode
+              end
             elsif entry.symlink?
               FileUtils.mkdir_p(File.dirname(dest))
               File.symlink(entry.header.linkname, dest)
@@ -51,6 +56,7 @@ class TestPackageDirectories < Minitest::Test
         end
       end
     end
+    permissions
   end
 
   def extract_zip(zip_path, extract_path)
@@ -79,10 +85,10 @@ class TestPackageDirectories < Minitest::Test
     FileUtils.rm_rf(extract_path)
     FileUtils.mkdir_p(extract_path)
 
-    extract_tar_gz(tarball, extract_path)
+    permissions = extract_tar_gz(tarball, extract_path)
     dir_path = File.join(extract_path, "requests-2.31.0")
 
-    swhid = Swhid::FromFilesystem.from_directory_path(dir_path)
+    swhid = Swhid::FromFilesystem.from_directory_path(dir_path, permissions: permissions)
 
     assert_equal "dir", swhid.object_type
     assert_equal "8cc447d988f7a3285be93c092a9028cc72baf77b", swhid.object_hash
@@ -99,10 +105,10 @@ class TestPackageDirectories < Minitest::Test
     FileUtils.rm_rf(extract_path)
     FileUtils.mkdir_p(extract_path)
 
-    extract_tar_gz(tarball, extract_path)
+    permissions = extract_tar_gz(tarball, extract_path)
     dir_path = File.join(extract_path, "package")
 
-    swhid = Swhid::FromFilesystem.from_directory_path(dir_path)
+    swhid = Swhid::FromFilesystem.from_directory_path(dir_path, permissions: permissions)
 
     assert_equal "dir", swhid.object_type
     assert_equal "218534bee8c4a3747459845330228bfac854715b", swhid.object_hash
@@ -119,10 +125,10 @@ class TestPackageDirectories < Minitest::Test
     FileUtils.rm_rf(extract_path)
     FileUtils.mkdir_p(extract_path)
 
-    extract_tar_gz(tarball, extract_path)
+    permissions = extract_tar_gz(tarball, extract_path)
     dir_path = File.join(extract_path, "serde-1.0.0")
 
-    swhid = Swhid::FromFilesystem.from_directory_path(dir_path)
+    swhid = Swhid::FromFilesystem.from_directory_path(dir_path, permissions: permissions)
 
     assert_equal "dir", swhid.object_type
     assert_equal "2006e18d039fb1d83d93155917fd720f5cad5980", swhid.object_hash

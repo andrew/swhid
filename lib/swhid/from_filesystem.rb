@@ -5,12 +5,12 @@ require "find"
 
 module Swhid
   module FromFilesystem
-    def self.from_directory_path(path, git_repo: nil)
+    def self.from_directory_path(path, git_repo: nil, permissions: nil)
       raise ArgumentError, "Path does not exist: #{path}" unless File.exist?(path)
       raise ArgumentError, "Path is not a directory: #{path}" unless File.directory?(path)
 
       git_repo ||= discover_git_repo(path)
-      entries = build_entries(path, git_repo: git_repo)
+      entries = build_entries(path, git_repo: git_repo, permissions: permissions)
       Swhid.from_directory(entries)
     end
 
@@ -21,7 +21,7 @@ module Swhid
       nil
     end
 
-    def self.build_entries(dir_path, git_repo: nil)
+    def self.build_entries(dir_path, git_repo: nil, permissions: nil)
       entries = []
 
       Dir.foreach(dir_path) do |name|
@@ -36,9 +36,9 @@ module Swhid
                   target_hash = Swhid.from_content(target_content).object_hash
                   { name: name, type: :symlink, target: target_hash }
                 elsif stat.directory?
-                  target_swhid = from_directory_path(full_path, git_repo: git_repo)
+                  target_swhid = from_directory_path(full_path, git_repo: git_repo, permissions: permissions)
                   { name: name, type: :dir, target: target_swhid.object_hash }
-                elsif file_executable?(full_path, stat, git_repo)
+                elsif file_executable?(full_path, stat, git_repo, permissions)
                   content = File.binread(full_path)
                   target_hash = Swhid.from_content(content).object_hash
                   { name: name, type: :exec, target: target_hash }
@@ -54,7 +54,14 @@ module Swhid
       entries
     end
 
-    def self.file_executable?(full_path, stat, git_repo)
+    def self.file_executable?(full_path, stat, git_repo, permissions = nil)
+      # Check explicit permissions map first (from tar extraction, etc.)
+      if permissions
+        mode = permissions[full_path] || permissions[File.expand_path(full_path)]
+        return (mode & 0o111) != 0 if mode
+      end
+
+      # Check Git index for tracked files
       if git_repo
         relative_path = relative_path_in_repo(full_path, git_repo)
         if relative_path
@@ -66,6 +73,7 @@ module Swhid
         end
       end
 
+      # Fall back to filesystem
       stat.executable?
     end
 

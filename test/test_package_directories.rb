@@ -4,6 +4,8 @@ require "test_helper"
 require "open-uri"
 require "tmpdir"
 require "fileutils"
+require "zlib"
+require "rubygems/package"
 
 # Tests for directory SWHIDs from extracted package archives
 # These tests download packages, extract them, and verify the directory hashes
@@ -20,12 +22,50 @@ class TestPackageDirectories < Minitest::Test
     cache_path = File.join(@cache_dir, filename)
 
     unless File.exist?(cache_path)
+      puts "Downloading #{filename}..."
       URI.open(url) do |remote|
         File.binwrite(cache_path, remote.read)
       end
     end
 
     cache_path
+  end
+
+  def extract_tar_gz(tarball_path, extract_path)
+    File.open(tarball_path, "rb") do |file|
+      Zlib::GzipReader.wrap(file) do |gz|
+        Gem::Package::TarReader.new(gz) do |tar|
+          tar.each do |entry|
+            dest = File.join(extract_path, entry.full_name)
+            if entry.directory?
+              FileUtils.mkdir_p(dest)
+            elsif entry.file?
+              FileUtils.mkdir_p(File.dirname(dest))
+              File.binwrite(dest, entry.read)
+              File.chmod(entry.header.mode, dest) if entry.header.mode
+            elsif entry.symlink?
+              FileUtils.mkdir_p(File.dirname(dest))
+              File.symlink(entry.header.linkname, dest)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  def extract_zip(zip_path, extract_path)
+    require "zip" # from rubyzip gem
+    Zip::File.open(zip_path) do |zip_file|
+      zip_file.each do |entry|
+        dest = File.join(extract_path, entry.name)
+        if entry.directory?
+          FileUtils.mkdir_p(dest)
+        else
+          FileUtils.mkdir_p(File.dirname(dest))
+          entry.extract(dest)
+        end
+      end
+    end
   end
 
   def test_python_package_directory
@@ -39,7 +79,7 @@ class TestPackageDirectories < Minitest::Test
     FileUtils.rm_rf(extract_path)
     FileUtils.mkdir_p(extract_path)
 
-    system("tar", "-xzf", tarball, "-C", extract_path, out: File::NULL, err: File::NULL)
+    extract_tar_gz(tarball, extract_path)
     dir_path = File.join(extract_path, "requests-2.31.0")
 
     swhid = Swhid::FromFilesystem.from_directory_path(dir_path)
@@ -59,7 +99,7 @@ class TestPackageDirectories < Minitest::Test
     FileUtils.rm_rf(extract_path)
     FileUtils.mkdir_p(extract_path)
 
-    system("tar", "-xzf", tarball, "-C", extract_path, out: File::NULL, err: File::NULL)
+    extract_tar_gz(tarball, extract_path)
     dir_path = File.join(extract_path, "package")
 
     swhid = Swhid::FromFilesystem.from_directory_path(dir_path)
@@ -79,7 +119,7 @@ class TestPackageDirectories < Minitest::Test
     FileUtils.rm_rf(extract_path)
     FileUtils.mkdir_p(extract_path)
 
-    system("tar", "-xzf", tarball, "-C", extract_path, out: File::NULL, err: File::NULL)
+    extract_tar_gz(tarball, extract_path)
     dir_path = File.join(extract_path, "serde-1.0.0")
 
     swhid = Swhid::FromFilesystem.from_directory_path(dir_path)
@@ -99,7 +139,7 @@ class TestPackageDirectories < Minitest::Test
     FileUtils.rm_rf(extract_path)
     FileUtils.mkdir_p(extract_path)
 
-    system("unzip", "-q", jar, "-d", extract_path, out: File::NULL, err: File::NULL)
+    extract_zip(jar, extract_path)
 
     swhid = Swhid::FromFilesystem.from_directory_path(extract_path)
 

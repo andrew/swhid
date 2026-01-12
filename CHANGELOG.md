@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+## [0.4.0] - 2026-01-12
+
+### Added
+- Windows support for directory SWHID computation
+- File permissions read from Git index on Windows where filesystem permissions unavailable
+- Optional `permissions:` parameter for `FromFilesystem.from_directory_path` to pass explicit file modes
+- CI testing on Windows (Ruby 3.4 and 4.0)
+
+### Changed
+- Archive extraction in tests now uses pure Ruby (Zlib/TarReader/Zip) instead of shell commands
+
 ## [0.3.1] - 2025-11-23
 
 ### Fixed

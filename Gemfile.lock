@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    swhid (0.3.1)
+    swhid (0.4.0)
       rugged (~> 1.9)
 
 GEM
@@ -62,7 +62,7 @@ CHECKSUMS
   rubyzip (2.4.1) sha256=8577c88edc1fde8935eb91064c5cb1aef9ad5494b940cf19c775ee833e075615
   rugged (1.9.0) sha256=7faaa912c5888d6e348d20fa31209b6409f1574346b1b80e309dbc7e8d63efac
   stringio (3.2.0) sha256=c37cb2e58b4ffbd33fe5cd948c05934af997b36e0b6ca6fdf43afa234cf222e1
-  swhid (0.3.1)
+  swhid (0.4.0)
   tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f
 
 BUNDLED WITH

@@ -5,15 +5,23 @@ require "find"
 
 module Swhid
   module FromFilesystem
-    def self.from_directory_path(path)
+    def self.from_directory_path(path, git_repo: nil)
       raise ArgumentError, "Path does not exist: #{path}" unless File.exist?(path)
       raise ArgumentError, "Path is not a directory: #{path}" unless File.directory?(path)
 
-      entries = build_entries(path)
+      git_repo ||= discover_git_repo(path)
+      entries = build_entries(path, git_repo: git_repo)
       Swhid.from_directory(entries)
     end
 
-    def self.build_entries(dir_path)
+    def self.discover_git_repo(path)
+      require "rugged"
+      Rugged::Repository.discover(path)
+    rescue Rugged::RepositoryError, Rugged::OSError
+      nil
+    end
+
+    def self.build_entries(dir_path, git_repo: nil)
       entries = []
 
       Dir.foreach(dir_path) do |name|
@@ -28,9 +36,9 @@ module Swhid
                   target_hash = Swhid.from_content(target_content).object_hash
                   { name: name, type: :symlink, target: target_hash }
                 elsif stat.directory?
-                  target_swhid = from_directory_path(full_path)
+                  target_swhid = from_directory_path(full_path, git_repo: git_repo)
                   { name: name, type: :dir, target: target_swhid.object_hash }
-                elsif stat.executable?
+                elsif file_executable?(full_path, stat, git_repo)
                   content = File.binread(full_path)
                   target_hash = Swhid.from_content(content).object_hash
                   { name: name, type: :exec, target: target_hash }
@@ -44,6 +52,35 @@ module Swhid
       end
 
       entries
+    end
+
+    def self.file_executable?(full_path, stat, git_repo)
+      if git_repo
+        relative_path = relative_path_in_repo(full_path, git_repo)
+        if relative_path
+          entry = git_repo.index[relative_path]
+          if entry
+            mode = entry[:mode]
+            return (mode & 0o111) != 0
+          end
+        end
+      end
+
+      stat.executable?
+    end
+
+    def self.relative_path_in_repo(full_path, git_repo)
+      repo_workdir = git_repo.workdir
+      return nil unless repo_workdir
+
+      full_path = File.expand_path(full_path)
+      repo_workdir = File.expand_path(repo_workdir)
+
+      return nil unless full_path.start_with?(repo_workdir)
+
+      relative = full_path.sub(repo_workdir, "")
+      relative = relative[1..] if relative.start_with?("/") || relative.start_with?("\\")
+      relative.tr("\\", "/")
     end
   end
 end

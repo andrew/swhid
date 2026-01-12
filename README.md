@@ -261,6 +261,36 @@ SWHIDs can include optional qualifiers to provide context:
 
 The hash computation for content, directory, revision, and release objects is compatible with Git's object hashing. This means you can use this gem to compute the same hashes that Git would produce for the same objects.
 
+## Windows Support
+
+The library works on Windows with some considerations for file permissions.
+
+Directory SWHIDs include file permission bits (executable vs non-executable). Windows doesn't store Unix-style permissions, so the library uses these strategies:
+
+1. **Files in a Git repository**: Permissions are read from the Git index, which works correctly on all platforms.
+
+2. **Extracted archives**: When extracting tar.gz files, pass the permissions from tar headers:
+
+```ruby
+require 'zlib'
+require 'rubygems/package'
+
+permissions = {}
+Zlib::GzipReader.open(tarball) do |gz|
+  Gem::Package::TarReader.new(gz) do |tar|
+    tar.each do |entry|
+      next unless entry.file?
+      File.binwrite(dest_path, entry.read)
+      permissions[dest_path] = entry.header.mode
+    end
+  end
+end
+
+swhid = Swhid::FromFilesystem.from_directory_path(extract_dir, permissions: permissions)
+```
+
+3. **Other directories**: Without Git or explicit permissions, Windows will treat all files as non-executable. If the directory contains executable files, the hash will differ from Linux/macOS.
+
 ## Development
 
 After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake test` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.

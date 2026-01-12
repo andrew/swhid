@@ -23,7 +23,6 @@ class TestPackageManagers < Minitest::Test
     cache_path = File.join(@cache_dir, filename)
 
     unless File.exist?(cache_path)
-      puts "Downloading #{filename}..."
       URI.open(url) do |remote|
         File.binwrite(cache_path, remote.read)
       end

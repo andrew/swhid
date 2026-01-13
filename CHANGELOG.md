@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [0.4.1] - 2026-01-13
+
+### Fixed
+- Resolve symlinks when matching paths for Git index permission lookups
+
 ## [0.4.0] - 2026-01-12
 
 ### Added

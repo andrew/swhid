@@ -57,7 +57,8 @@ module Swhid
     def self.file_executable?(full_path, stat, git_repo, permissions = nil)
       # Check explicit permissions map first (from tar extraction, etc.)
       if permissions
-        mode = permissions[full_path] || permissions[File.expand_path(full_path)]
+        real_path = File.realpath(full_path) rescue File.expand_path(full_path)
+        mode = permissions[full_path] || permissions[real_path]
         return (mode & 0o111) != 0 if mode
       end
 
@@ -81,13 +82,16 @@ module Swhid
       repo_workdir = git_repo.workdir
       return nil unless repo_workdir
 
-      full_path = File.expand_path(full_path)
-      repo_workdir = File.expand_path(repo_workdir)
+      # Use realpath to resolve symlinks (e.g., /tmp -> /private/tmp on macOS)
+      full_path = File.realpath(full_path) rescue File.expand_path(full_path)
+      repo_workdir = File.realpath(repo_workdir) rescue File.expand_path(repo_workdir)
+
+      # Ensure repo_workdir ends with separator for proper prefix matching
+      repo_workdir = repo_workdir.chomp("/").chomp("\\") + "/"
 
       return nil unless full_path.start_with?(repo_workdir)
 
       relative = full_path.sub(repo_workdir, "")
-      relative = relative[1..] if relative.start_with?("/") || relative.start_with?("\\")
       relative.tr("\\", "/")
     end
   end

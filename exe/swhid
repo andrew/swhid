@@ -6,6 +6,9 @@ require "swhid"
 require "optparse"
 require "json"
 
+# Ensure consistent LF line endings on all platforms
+$stdout.binmode
+
 class SwhidCLI
   def initialize(args)
     @args = args

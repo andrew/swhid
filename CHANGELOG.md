@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+## [0.4.2] - 2026-01-14
+
+### Fixed
+- CLI now reads stdin and writes stdout in binary mode (fixes CRLF and binary file handling on Windows)
+- Normalize path separators for Git index lookups on Windows
+
+### Added
+- CLI integration tests for binary content and line ending preservation
+
 ## [0.4.1] - 2026-01-13
 
 ### Fixed

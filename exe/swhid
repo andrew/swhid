@@ -96,6 +96,7 @@ class SwhidCLI
   end
 
   def compute_content_swhid
+    $stdin.binmode
     content = $stdin.read
 
     swhid = Swhid.from_content(content)

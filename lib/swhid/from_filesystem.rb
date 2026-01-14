@@ -86,13 +86,16 @@ module Swhid
       full_path = File.realpath(full_path) rescue File.expand_path(full_path)
       repo_workdir = File.realpath(repo_workdir) rescue File.expand_path(repo_workdir)
 
+      # Normalize path separators for consistent comparison (especially on Windows)
+      full_path = full_path.tr("\\", "/")
+      repo_workdir = repo_workdir.tr("\\", "/")
+
       # Ensure repo_workdir ends with separator for proper prefix matching
-      repo_workdir = repo_workdir.chomp("/").chomp("\\") + "/"
+      repo_workdir = repo_workdir.chomp("/") + "/"
 
       return nil unless full_path.start_with?(repo_workdir)
 
-      relative = full_path.sub(repo_workdir, "")
-      relative.tr("\\", "/")
+      full_path.sub(repo_workdir, "")
     end
   end
 end

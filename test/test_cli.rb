@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "open3"
+require "tmpdir"
 
 class TestCLI < Minitest::Test
   def swhid_exe
@@ -12,6 +13,24 @@ class TestCLI < Minitest::Test
     cmd = [RbConfig.ruby, swhid_exe, *args]
     stdout, stderr, status = Open3.capture3(*cmd, stdin_data: stdin, binmode: true)
     [stdout, stderr, status]
+  end
+
+  def run_git(repo_path, *args)
+    stdout, stderr, status = Open3.capture3("git", "-C", repo_path, *args)
+    assert status.success?, "git #{args.join(" ")} failed: #{stderr}"
+    stdout.strip
+  end
+
+  def with_git_repository
+    Dir.mktmpdir("swhid-git") do |repo_path|
+      run_git(repo_path, "init", "--quiet")
+      run_git(repo_path, "symbolic-ref", "HEAD", "refs/heads/main")
+      run_git(repo_path, "config", "user.name", "SWHID Test")
+      run_git(repo_path, "config", "user.email", "swhid@example.com")
+      run_git(repo_path, "config", "commit.gpgsign", "false")
+      run_git(repo_path, "config", "tag.gpgsign", "false")
+      yield repo_path
+    end
   end
 
   def test_content_simple_text
@@ -78,6 +97,81 @@ class TestCLI < Minitest::Test
     stdout, stderr, status = run_cli("parse", "swh:1:cnt:e69de29bb2d1d6434b8b29ae775ad8c2e48c5391")
     assert status.success?, "CLI failed: #{stderr}"
     assert_includes stdout, "swh:1:cnt:e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+  end
+
+  def test_snapshot_ignores_remote_tracking_and_note_refs
+    with_git_repository do |repo_path|
+      File.binwrite(File.join(repo_path, "README"), "snapshot fixture\n")
+      run_git(repo_path, "add", "README")
+      run_git(repo_path, "commit", "--quiet", "-m", "Initial commit")
+
+      expected_stdout, expected_stderr, expected_status = run_cli("snapshot", repo_path)
+      assert expected_status.success?, "CLI failed: #{expected_stderr}"
+
+      head = run_git(repo_path, "rev-parse", "HEAD")
+      run_git(repo_path, "update-ref", "refs/remotes/origin/main", head)
+      run_git(repo_path, "update-ref", "refs/notes/review", head)
+
+      stdout, stderr, status = run_cli("snapshot", repo_path)
+      assert status.success?, "CLI failed: #{stderr}"
+      assert_equal expected_stdout, stdout
+    end
+  end
+
+  def test_directory_uses_gitlink_from_index
+    with_git_repository do |repo_path|
+      run_git(repo_path, "commit", "--quiet", "--allow-empty", "-m", "Submodule target")
+      target = run_git(repo_path, "rev-parse", "HEAD")
+      run_git(repo_path, "update-index", "--add", "--cacheinfo", "160000,#{target},submodule")
+
+      submodule_path = File.join(repo_path, "submodule")
+      Dir.mkdir(submodule_path)
+      File.binwrite(File.join(submodule_path, "local-file"), "not part of the gitlink\n")
+
+      stdout, stderr, status = run_cli("directory", repo_path)
+      assert status.success?, "CLI failed: #{stderr}"
+
+      expected = Swhid.from_directory([{ name: "submodule", type: :rev, target: target }])
+      assert_equal "#{expected}\n", stdout
+    end
+  end
+
+  def test_directory_uses_nested_git_index_permissions
+    with_git_repository do |repo_path|
+      nested_path = File.join(repo_path, "nested")
+      Dir.mkdir(nested_path)
+      script_path = File.join(nested_path, "script")
+      File.binwrite(script_path, "#!/bin/sh\necho test\n")
+      run_git(repo_path, "add", "nested/script")
+      run_git(repo_path, "update-index", "--chmod=+x", "nested/script")
+
+      stdout, stderr, status = run_cli("directory", repo_path)
+      assert status.success?, "CLI failed: #{stderr}"
+
+      content = Swhid.from_content(File.binread(script_path))
+      nested = Swhid.from_directory([{ name: "script", type: :exec, target: content.object_hash }])
+      expected = Swhid.from_directory([{ name: "nested", type: :dir, target: nested.object_hash }])
+      assert_equal "#{expected}\n", stdout
+    end
+  end
+
+  def test_revision_and_release_match_git_object_ids
+    with_git_repository do |repo_path|
+      File.binwrite(File.join(repo_path, "README"), "Git object fixture\n")
+      run_git(repo_path, "add", "README")
+      run_git(repo_path, "commit", "--quiet", "-m", "Initial commit")
+
+      commit_oid = run_git(repo_path, "rev-parse", "HEAD")
+      revision_stdout, revision_stderr, revision_status = run_cli("revision", repo_path)
+      assert revision_status.success?, "CLI failed: #{revision_stderr}"
+      assert_equal "swh:1:rev:#{commit_oid}\n", revision_stdout
+
+      run_git(repo_path, "tag", "--annotate", "v1.0.0", "--message", "Release 1.0.0")
+      tag_oid = run_git(repo_path, "rev-parse", "refs/tags/v1.0.0")
+      release_stdout, release_stderr, release_status = run_cli("release", repo_path, "v1.0.0")
+      assert release_status.success?, "CLI failed: #{release_stderr}"
+      assert_equal "swh:1:rel:#{tag_oid}\n", release_stdout
+    end
   end
 
   def test_help

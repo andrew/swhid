@@ -91,4 +91,25 @@ class TestSnapshot < Minitest::Test
     assert_equal "snp", swhid.object_type
     assert_equal 40, swhid.object_hash.length
   end
+
+  def test_rejects_invalid_target_hash
+    assert_raises(Swhid::ValidationError) do
+      Swhid.from_snapshot([{ name: "refs/heads/main", target_type: "revision", target: "z" * 40 }])
+    end
+  end
+
+  def test_rejects_duplicate_branch_names
+    branches = [
+      { name: "refs/heads/main", target_type: "revision", target: "94a9ed024d3859793618152ea559a168bbcbb5e2" },
+      { name: "refs/heads/main", target_type: "revision", target: "84a9ed024d3859793618152ea559a168bbcbb5e1" }
+    ]
+
+    assert_raises(Swhid::ValidationError) { Swhid.from_snapshot(branches) }
+  end
+
+  def test_rejects_null_byte_in_branch_name
+    assert_raises(Swhid::ValidationError) do
+      Swhid.from_snapshot([{ name: "refs/heads/main\0old", target_type: "dangling" }])
+    end
+  end
 end

@@ -10,7 +10,25 @@ module Swhid
       raise ArgumentError, "Path is not a directory: #{path}" unless File.directory?(path)
 
       git_repo ||= discover_git_repo(path)
-      entries = build_entries(path, git_repo: git_repo, permissions: permissions)
+      repo_relative_path = relative_path_in_repo(path, git_repo) if git_repo
+      index_entries = load_git_index_entries(git_repo)
+      compute_directory_path(
+        path,
+        git_repo: git_repo,
+        permissions: permissions,
+        repo_relative_path: repo_relative_path,
+        index_entries: index_entries
+      )
+    end
+
+    def self.compute_directory_path(path, git_repo:, permissions:, repo_relative_path:, index_entries:)
+      entries = build_entries(
+        path,
+        git_repo: git_repo,
+        permissions: permissions,
+        repo_relative_path: repo_relative_path,
+        index_entries: index_entries
+      )
       Swhid.from_directory(entries)
     end
 
@@ -21,8 +39,9 @@ module Swhid
       nil
     end
 
-    def self.build_entries(dir_path, git_repo: nil, permissions: nil)
+    def self.build_entries(dir_path, git_repo: nil, permissions: nil, repo_relative_path: nil, index_entries: nil)
       entries = []
+      index_entries ||= load_git_index_entries(git_repo)
 
       Dir.foreach(dir_path) do |name|
         next if name == "." || name == ".."
@@ -30,21 +49,38 @@ module Swhid
 
         full_path = File.join(dir_path, name)
         stat = File.lstat(full_path)
+        relative_path = if repo_relative_path
+                          repo_relative_path.empty? ? name : "#{repo_relative_path}/#{name}"
+                        end
+        index_entry = relative_path && index_entries[relative_path]
 
-        entry = if File.symlink?(full_path)
+        entry = if index_entry && (index_entry[:mode] & 0o170000) == 0o160000
+                  { name: name, type: :rev, target: index_entry[:oid] }
+                elsif File.symlink?(full_path)
                   target_content = File.readlink(full_path)
                   target_hash = Swhid.from_content(target_content).object_hash
                   { name: name, type: :symlink, target: target_hash }
                 elsif stat.directory?
-                  target_swhid = from_directory_path(full_path, git_repo: git_repo, permissions: permissions)
+                  target_swhid = compute_directory_path(
+                    full_path,
+                    git_repo: git_repo,
+                    permissions: permissions,
+                    repo_relative_path: relative_path,
+                    index_entries: index_entries
+                  )
                   { name: name, type: :dir, target: target_swhid.object_hash }
-                elsif file_executable?(full_path, stat, git_repo, permissions)
-                  content = File.binread(full_path)
-                  target_hash = Swhid.from_content(content).object_hash
+                elsif file_executable?(
+                  full_path,
+                  stat,
+                  git_repo,
+                  permissions,
+                  index_entry: index_entry,
+                  index_checked: true
+                )
+                  target_hash = content_swhid_from_file(full_path, stat.size).object_hash
                   { name: name, type: :exec, target: target_hash }
                 else
-                  content = File.binread(full_path)
-                  target_hash = Swhid.from_content(content).object_hash
+                  target_hash = content_swhid_from_file(full_path, stat.size).object_hash
                   { name: name, type: :file, target: target_hash }
                 end
 
@@ -54,7 +90,13 @@ module Swhid
       entries
     end
 
-    def self.file_executable?(full_path, stat, git_repo, permissions = nil)
+    def self.content_swhid_from_file(path, size)
+      File.open(path, "rb") do |file|
+        Swhid.from_content_io(file, size: size)
+      end
+    end
+
+    def self.file_executable?(full_path, stat, git_repo, permissions = nil, index_entry: nil, index_checked: false)
       # Check explicit permissions map first (from tar extraction, etc.)
       if permissions
         real_path = File.realpath(full_path) rescue File.expand_path(full_path)
@@ -64,18 +106,27 @@ module Swhid
 
       # Check Git index for tracked files
       if git_repo
-        relative_path = relative_path_in_repo(full_path, git_repo)
-        if relative_path
-          entry = git_repo.index[relative_path]
-          if entry
-            mode = entry[:mode]
-            return (mode & 0o111) != 0
-          end
-        end
+        index_entry ||= git_index_entry(full_path, git_repo) unless index_checked
+        return (index_entry[:mode] & 0o111) != 0 if index_entry
       end
 
       # Fall back to filesystem
       stat.executable?
+    end
+
+    def self.git_index_entry(full_path, git_repo)
+      return nil unless git_repo
+
+      relative_path = relative_path_in_repo(full_path, git_repo)
+      relative_path && git_repo.index[relative_path]
+    end
+
+    def self.load_git_index_entries(git_repo)
+      return {} unless git_repo
+
+      git_repo.index.each_with_object({}) do |entry, entries|
+        entries[entry[:path]] = entry if entry[:stage].zero?
+      end
     end
 
     def self.relative_path_in_repo(full_path, git_repo)
@@ -90,12 +141,13 @@ module Swhid
       full_path = full_path.tr("\\", "/")
       repo_workdir = repo_workdir.tr("\\", "/")
 
-      # Ensure repo_workdir ends with separator for proper prefix matching
-      repo_workdir = repo_workdir.chomp("/") + "/"
+      repo_workdir = repo_workdir.chomp("/")
+      return "" if full_path == repo_workdir
 
-      return nil unless full_path.start_with?(repo_workdir)
+      repo_prefix = "#{repo_workdir}/"
+      return nil unless full_path.start_with?(repo_prefix)
 
-      full_path.sub(repo_workdir, "")
+      full_path.delete_prefix(repo_prefix)
     end
   end
 end

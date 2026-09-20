@@ -9,10 +9,14 @@ module Swhid
         attr_reader :name, :type, :target, :perms
 
         def initialize(name:, type:, target:, perms: nil)
-          @name = name
+          @name = validate_name!(name)
           @type = type
           @target = target
           @perms = perms || default_perms
+          @name_binary = @name.b.freeze
+          @perms_binary = @perms.to_s.b.freeze
+          @target_hash = pack_target_hash(target).freeze
+          @sort_key = type == :dir ? @name_binary + "/".b : @name_binary
         end
 
         def default_perms
@@ -33,28 +37,52 @@ module Swhid
         end
 
         def sort_key
-          type == :dir ? "#{name}/" : name
+          @sort_key
         end
 
         def target_hash
-          case target
+          @target_hash
+        end
+
+        def name_binary
+          @name_binary
+        end
+
+        def perms_binary
+          @perms_binary
+        end
+
+        def pack_target_hash(value)
+          case value
           when String
-            raise ValidationError, "Invalid hash length" unless target.length == 40
-            [target].pack("H*")
+            unless value.match?(/\A[0-9a-f]{#{OBJECT_ID_LENGTH}}\z/)
+              raise ValidationError, "Invalid target hash"
+            end
+            [value].pack("H*")
           when Identifier
-            [target.object_id].pack("H*")
+            [value.object_hash].pack("H*")
           else
             raise ValidationError, "Invalid target type"
           end
+        end
+
+        def validate_name!(value)
+          raise ValidationError, "Directory entry name must be a string" unless value.is_a?(String)
+          raise ValidationError, "Directory entry name cannot contain a null byte" if value.include?("\0")
+          raise ValidationError, "Directory entry name cannot contain a slash" if value.include?("/")
+
+          value
         end
       end
 
       def self.compute(entries)
         serialized = serialize_entries(entries)
         header = "tree #{serialized.bytesize}\0"
-        hash = Digest::SHA1.hexdigest(header + serialized)
+        digest = Digest::SHA1.new
+        digest.update(header)
+        digest.update(serialized)
 
-        Identifier.new(object_type: "dir", object_hash: hash)
+        Identifier.new(object_type: "dir", object_hash: digest.hexdigest)
       end
 
       def self.serialize_entries(entries)
@@ -66,14 +94,22 @@ module Swhid
           end
         end
 
+        entry_names = {}
+        entries.each do |entry|
+          name = entry.name_binary
+          raise ValidationError, "Duplicate directory entry name: #{entry.name}" if entry_names.key?(name)
+
+          entry_names[name] = true
+        end
+
         sorted_entries = entries.sort_by(&:sort_key)
 
-        sorted_entries.map do |entry|
-          # Convert name to binary UTF-8 to match target_hash encoding
-          name_binary = entry.name.encode(Encoding::UTF_8).force_encoding(Encoding::BINARY)
-          perms_binary = entry.perms.encode(Encoding::UTF_8).force_encoding(Encoding::BINARY)
-          "#{perms_binary} #{name_binary}\0#{entry.target_hash}"
-        end.join
+        capacity = sorted_entries.sum { |entry| entry.perms_binary.bytesize + entry.name_binary.bytesize + 22 }
+        serialized = String.new(capacity: capacity, encoding: Encoding::BINARY)
+        sorted_entries.each do |entry|
+          serialized << entry.perms_binary << 32 << entry.name_binary << 0 << entry.target_hash
+        end
+        serialized
       end
 
       def self.compute_hash(entries)

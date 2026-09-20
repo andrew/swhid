@@ -74,6 +74,11 @@ content = File.read("example.txt")
 swhid = Swhid.from_content(content)
 puts swhid.to_s # => "swh:1:cnt:..."
 
+# Stream a large file
+swhid = File.open("archive.tar", "rb") do |file|
+  Swhid.from_content_io(file, size: file.size)
+end
+
 # Empty file
 swhid = Swhid.from_content("")
 puts swhid.to_s # => "swh:1:cnt:e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"

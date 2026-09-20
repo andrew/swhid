@@ -28,6 +28,10 @@ module Swhid
     Objects::Content.compute(content)
   end
 
+  def self.from_content_io(io, size:)
+    Objects::Content.compute_io(io, size: size)
+  end
+
   def self.from_directory(entries)
     Objects::Directory.compute(entries)
   end

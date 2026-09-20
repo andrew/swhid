@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "stringio"
 
 class TestContent < Minitest::Test
   def test_compute_from_string
@@ -68,5 +69,22 @@ class TestContent < Minitest::Test
 
     assert_equal "cnt", swhid.object_type
     assert_equal 40, swhid.object_hash.length
+  end
+
+  def test_compute_from_io
+    content = ("streamed content\n" * 10_000).b
+
+    from_string = Swhid.from_content(content)
+    from_io = Swhid.from_content_io(StringIO.new(content), size: content.bytesize)
+
+    assert_equal from_string, from_io
+  end
+
+  def test_compute_from_io_rejects_incorrect_size
+    error = assert_raises(ArgumentError) do
+      Swhid.from_content_io(StringIO.new("content"), size: 6)
+    end
+
+    assert_equal "Content size is 7 bytes, expected 6", error.message
   end
 end

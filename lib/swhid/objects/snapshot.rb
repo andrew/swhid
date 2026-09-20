@@ -62,9 +62,11 @@ module Swhid
       def self.compute(branches)
         serialized = serialize_branches(branches)
         header = "snapshot #{serialized.bytesize}\0"
-        hash = Digest::SHA1.hexdigest(header + serialized)
+        digest = Digest::SHA1.new
+        digest.update(header)
+        digest.update(serialized)
 
-        Identifier.new(object_type: "snp", object_hash: hash)
+        Identifier.new(object_type: "snp", object_hash: digest.hexdigest)
       end
 
       def self.serialize_branches(branches)

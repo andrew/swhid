@@ -28,6 +28,7 @@ class TestCLI < Minitest::Test
       run_git(repo_path, "config", "user.name", "SWHID Test")
       run_git(repo_path, "config", "user.email", "swhid@example.com")
       run_git(repo_path, "config", "commit.gpgsign", "false")
+      run_git(repo_path, "config", "tag.gpgsign", "false")
       yield repo_path
     end
   end
@@ -132,6 +133,44 @@ class TestCLI < Minitest::Test
 
       expected = Swhid.from_directory([{ name: "submodule", type: :rev, target: target }])
       assert_equal "#{expected}\n", stdout
+    end
+  end
+
+  def test_directory_uses_nested_git_index_permissions
+    with_git_repository do |repo_path|
+      nested_path = File.join(repo_path, "nested")
+      Dir.mkdir(nested_path)
+      script_path = File.join(nested_path, "script")
+      File.binwrite(script_path, "#!/bin/sh\necho test\n")
+      run_git(repo_path, "add", "nested/script")
+      run_git(repo_path, "update-index", "--chmod=+x", "nested/script")
+
+      stdout, stderr, status = run_cli("directory", repo_path)
+      assert status.success?, "CLI failed: #{stderr}"
+
+      content = Swhid.from_content(File.binread(script_path))
+      nested = Swhid.from_directory([{ name: "script", type: :exec, target: content.object_hash }])
+      expected = Swhid.from_directory([{ name: "nested", type: :dir, target: nested.object_hash }])
+      assert_equal "#{expected}\n", stdout
+    end
+  end
+
+  def test_revision_and_release_match_git_object_ids
+    with_git_repository do |repo_path|
+      File.binwrite(File.join(repo_path, "README"), "Git object fixture\n")
+      run_git(repo_path, "add", "README")
+      run_git(repo_path, "commit", "--quiet", "-m", "Initial commit")
+
+      commit_oid = run_git(repo_path, "rev-parse", "HEAD")
+      revision_stdout, revision_stderr, revision_status = run_cli("revision", repo_path)
+      assert revision_status.success?, "CLI failed: #{revision_stderr}"
+      assert_equal "swh:1:rev:#{commit_oid}\n", revision_stdout
+
+      run_git(repo_path, "tag", "--annotate", "v1.0.0", "--message", "Release 1.0.0")
+      tag_oid = run_git(repo_path, "rev-parse", "refs/tags/v1.0.0")
+      release_stdout, release_stderr, release_status = run_cli("release", repo_path, "v1.0.0")
+      assert release_status.success?, "CLI failed: #{release_stderr}"
+      assert_equal "swh:1:rel:#{tag_oid}\n", release_stdout
     end
   end
 

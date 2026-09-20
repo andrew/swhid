@@ -16,9 +16,11 @@ module Swhid
       def self.compute(metadata)
         serialized = serialize_metadata(metadata)
         header = "tag #{serialized.bytesize}\0"
-        hash = Digest::SHA1.hexdigest(header + serialized)
+        digest = Digest::SHA1.new
+        digest.update(header)
+        digest.update(serialized)
 
-        Identifier.new(object_type: "rel", object_hash: hash)
+        Identifier.new(object_type: "rel", object_hash: digest.hexdigest)
       end
 
       def self.serialize_metadata(metadata)

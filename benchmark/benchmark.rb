@@ -4,6 +4,8 @@
 require "bundler/setup"
 require "swhid"
 require "benchmark"
+require "stringio"
+require "tmpdir"
 
 puts "SWHID Performance Benchmarks"
 puts "=" * 60
@@ -27,6 +29,33 @@ Benchmark.bm(30) do |x|
   x.report("Large content (1 MB):") do
     100.times { Swhid.from_content(content_large) }
   end
+
+  x.report("Large content IO (1 MB):") do
+    100.times do
+      Swhid.from_content_io(StringIO.new(content_large), size: content_large.bytesize)
+    end
+  end
+end
+
+puts
+puts "=" * 60
+puts
+puts "Filesystem directory hashing:"
+
+Dir.mktmpdir("swhid-benchmark") do |directory_path|
+  require "rugged"
+  repository = Rugged::Repository.init_at(directory_path)
+  1_000.times do |i|
+    File.binwrite(File.join(directory_path, "file#{i}.txt"), "content #{i}\n")
+  end
+  repository.index.add_all
+  repository.index.write
+
+  Benchmark.bm(30) do |x|
+    x.report("Filesystem (1,000 files):") do
+      10.times { Swhid::FromFilesystem.from_directory_path(directory_path) }
+    end
+  end
 end
 
 puts
@@ -48,6 +77,10 @@ entries_large = 100.times.map do |i|
   { name: "file#{i}.txt", type: :file, target: "94a9ed024d3859793618152ea559a168bbcbb5e2" }
 end
 
+entries_xlarge = 1_000.times.map do |i|
+  { name: "file#{i}.txt", type: :file, target: "94a9ed024d3859793618152ea559a168bbcbb5e2" }
+end
+
 Benchmark.bm(30) do |x|
   x.report("Small directory (1 entry):") do
     10_000.times { Swhid.from_directory(entries_small) }
@@ -59,6 +92,27 @@ Benchmark.bm(30) do |x|
 
   x.report("Large directory (100 entries):") do
     1_000.times { Swhid.from_directory(entries_large) }
+  end
+
+  x.report("XL directory (1,000 entries):") do
+    100.times { Swhid.from_directory(entries_xlarge) }
+  end
+end
+
+puts
+puts "=" * 60
+puts
+
+# Benchmark snapshot hashing
+puts "Snapshot hashing:"
+
+branches = 1_000.times.map do |i|
+  { name: "refs/heads/branch#{i}", target_type: "revision", target: "94a9ed024d3859793618152ea559a168bbcbb5e2" }
+end
+
+Benchmark.bm(30) do |x|
+  x.report("Snapshot (1,000 branches):") do
+    100.times { Swhid.from_snapshot(branches) }
   end
 end
 

@@ -7,7 +7,7 @@ gemspec
 
 gem "irb"
 gem "benchmark"
-gem "rake", "~> 13.0"
+gem "rake", "~> 13.4"
 
 gem "minitest", "~> 6.0"
 gem "rubyzip", "~> 2.3"

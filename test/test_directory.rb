@@ -86,4 +86,49 @@ class TestDirectory < Minitest::Test
     assert_equal "dir", swhid.object_type
     assert_equal 40, swhid.object_hash.length
   end
+
+  def test_identifier_target_matches_hash_target
+    target = Swhid::Identifier.new(
+      object_type: "cnt",
+      object_hash: "94a9ed024d3859793618152ea559a168bbcbb5e2"
+    )
+
+    from_identifier = Swhid.from_directory([{ name: "file.txt", type: :file, target: target }])
+    from_hash = Swhid.from_directory([{ name: "file.txt", type: :file, target: target.object_hash }])
+
+    assert_equal from_hash, from_identifier
+  end
+
+  def test_rejects_invalid_target_hash
+    assert_raises(Swhid::ValidationError) do
+      Swhid.from_directory([{ name: "file.txt", type: :file, target: "z" * 40 }])
+    end
+  end
+
+  def test_rejects_duplicate_entry_names
+    entries = [
+      { name: "file.txt", type: :file, target: "94a9ed024d3859793618152ea559a168bbcbb5e2" },
+      { name: "file.txt", type: :file, target: "84a9ed024d3859793618152ea559a168bbcbb5e1" }
+    ]
+
+    assert_raises(Swhid::ValidationError) { Swhid.from_directory(entries) }
+  end
+
+  def test_rejects_invalid_entry_names
+    ["path/name", "null\0name"].each do |name|
+      assert_raises(Swhid::ValidationError) do
+        Swhid.from_directory([{ name: name, type: :file, target: "94a9ed024d3859793618152ea559a168bbcbb5e2" }])
+      end
+    end
+  end
+
+  def test_accepts_entry_names_with_non_utf8_bytes
+    name = "name-\xFF".b
+
+    swhid = Swhid.from_directory([
+      { name: name, type: :file, target: "94a9ed024d3859793618152ea559a168bbcbb5e2" }
+    ])
+
+    assert_equal "dir", swhid.object_type
+  end
 end

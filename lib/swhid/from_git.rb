@@ -90,9 +90,9 @@ module Swhid
         end
       end
 
-      # Get all references (branches and tags)
       repo.references.each do |ref|
         ref_name = ref.name
+        next unless ref_name.start_with?("refs/heads/", "refs/tags/")
 
         if ref.type == :symbolic
           # This is an alias (symbolic ref)

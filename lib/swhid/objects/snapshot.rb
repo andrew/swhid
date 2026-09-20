@@ -9,7 +9,7 @@ module Swhid
         attr_reader :name, :target_type, :target
 
         def initialize(name:, target_type:, target: nil)
-          @name = name
+          @name = validate_name!(name)
           @target_type = target_type
           @target = target
         end
@@ -22,6 +22,13 @@ module Swhid
         end
 
         private
+
+        def validate_name!(value)
+          raise ValidationError, "Snapshot branch name must be a string" unless value.is_a?(String)
+          raise ValidationError, "Snapshot branch name cannot contain a null byte" if value.include?("\0")
+
+          value
+        end
 
         def compute_target_identifier
           case target_type
@@ -39,7 +46,7 @@ module Swhid
         def extract_hash_bytes(value)
           hash_string = case value
                        when String
-                         value.length == 40 ? value : nil
+                         value.match?(/\A[0-9a-f]{#{OBJECT_ID_LENGTH}}\z/) ? value : nil
                        when Identifier
                          value.object_hash
                        else
@@ -69,7 +76,9 @@ module Swhid
           end
         end
 
-        sorted_branches = branch_objects.sort_by(&:name)
+        sorted_branches = branch_objects.sort_by { |branch| branch.name.b }
+        duplicate = sorted_branches.each_cons(2).find { |left, right| left.name.b == right.name.b }
+        raise ValidationError, "Duplicate snapshot branch name: #{duplicate.first.name}" if duplicate
 
         sorted_branches.map(&:serialize).join
       end

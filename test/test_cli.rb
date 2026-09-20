@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "open3"
+require "tmpdir"
 
 class TestCLI < Minitest::Test
   def swhid_exe
@@ -12,6 +13,23 @@ class TestCLI < Minitest::Test
     cmd = [RbConfig.ruby, swhid_exe, *args]
     stdout, stderr, status = Open3.capture3(*cmd, stdin_data: stdin, binmode: true)
     [stdout, stderr, status]
+  end
+
+  def run_git(repo_path, *args)
+    stdout, stderr, status = Open3.capture3("git", "-C", repo_path, *args)
+    assert status.success?, "git #{args.join(" ")} failed: #{stderr}"
+    stdout.strip
+  end
+
+  def with_git_repository
+    Dir.mktmpdir("swhid-git") do |repo_path|
+      run_git(repo_path, "init", "--quiet")
+      run_git(repo_path, "symbolic-ref", "HEAD", "refs/heads/main")
+      run_git(repo_path, "config", "user.name", "SWHID Test")
+      run_git(repo_path, "config", "user.email", "swhid@example.com")
+      run_git(repo_path, "config", "commit.gpgsign", "false")
+      yield repo_path
+    end
   end
 
   def test_content_simple_text
@@ -78,6 +96,43 @@ class TestCLI < Minitest::Test
     stdout, stderr, status = run_cli("parse", "swh:1:cnt:e69de29bb2d1d6434b8b29ae775ad8c2e48c5391")
     assert status.success?, "CLI failed: #{stderr}"
     assert_includes stdout, "swh:1:cnt:e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+  end
+
+  def test_snapshot_ignores_remote_tracking_and_note_refs
+    with_git_repository do |repo_path|
+      File.binwrite(File.join(repo_path, "README"), "snapshot fixture\n")
+      run_git(repo_path, "add", "README")
+      run_git(repo_path, "commit", "--quiet", "-m", "Initial commit")
+
+      expected_stdout, expected_stderr, expected_status = run_cli("snapshot", repo_path)
+      assert expected_status.success?, "CLI failed: #{expected_stderr}"
+
+      head = run_git(repo_path, "rev-parse", "HEAD")
+      run_git(repo_path, "update-ref", "refs/remotes/origin/main", head)
+      run_git(repo_path, "update-ref", "refs/notes/review", head)
+
+      stdout, stderr, status = run_cli("snapshot", repo_path)
+      assert status.success?, "CLI failed: #{stderr}"
+      assert_equal expected_stdout, stdout
+    end
+  end
+
+  def test_directory_uses_gitlink_from_index
+    with_git_repository do |repo_path|
+      run_git(repo_path, "commit", "--quiet", "--allow-empty", "-m", "Submodule target")
+      target = run_git(repo_path, "rev-parse", "HEAD")
+      run_git(repo_path, "update-index", "--add", "--cacheinfo", "160000,#{target},submodule")
+
+      submodule_path = File.join(repo_path, "submodule")
+      Dir.mkdir(submodule_path)
+      File.binwrite(File.join(submodule_path, "local-file"), "not part of the gitlink\n")
+
+      stdout, stderr, status = run_cli("directory", repo_path)
+      assert status.success?, "CLI failed: #{stderr}"
+
+      expected = Swhid.from_directory([{ name: "submodule", type: :rev, target: target }])
+      assert_equal "#{expected}\n", stdout
+    end
   end
 
   def test_help

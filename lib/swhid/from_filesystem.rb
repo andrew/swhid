@@ -30,15 +30,18 @@ module Swhid
 
         full_path = File.join(dir_path, name)
         stat = File.lstat(full_path)
+        index_entry = git_index_entry(full_path, git_repo)
 
-        entry = if File.symlink?(full_path)
+        entry = if index_entry && (index_entry[:mode] & 0o170000) == 0o160000
+                  { name: name, type: :rev, target: index_entry[:oid] }
+                elsif File.symlink?(full_path)
                   target_content = File.readlink(full_path)
                   target_hash = Swhid.from_content(target_content).object_hash
                   { name: name, type: :symlink, target: target_hash }
                 elsif stat.directory?
                   target_swhid = from_directory_path(full_path, git_repo: git_repo, permissions: permissions)
                   { name: name, type: :dir, target: target_swhid.object_hash }
-                elsif file_executable?(full_path, stat, git_repo, permissions)
+                elsif file_executable?(full_path, stat, git_repo, permissions, index_entry: index_entry)
                   content = File.binread(full_path)
                   target_hash = Swhid.from_content(content).object_hash
                   { name: name, type: :exec, target: target_hash }
@@ -54,7 +57,7 @@ module Swhid
       entries
     end
 
-    def self.file_executable?(full_path, stat, git_repo, permissions = nil)
+    def self.file_executable?(full_path, stat, git_repo, permissions = nil, index_entry: nil)
       # Check explicit permissions map first (from tar extraction, etc.)
       if permissions
         real_path = File.realpath(full_path) rescue File.expand_path(full_path)
@@ -64,18 +67,19 @@ module Swhid
 
       # Check Git index for tracked files
       if git_repo
-        relative_path = relative_path_in_repo(full_path, git_repo)
-        if relative_path
-          entry = git_repo.index[relative_path]
-          if entry
-            mode = entry[:mode]
-            return (mode & 0o111) != 0
-          end
-        end
+        index_entry ||= git_index_entry(full_path, git_repo)
+        return (index_entry[:mode] & 0o111) != 0 if index_entry
       end
 
       # Fall back to filesystem
       stat.executable?
+    end
+
+    def self.git_index_entry(full_path, git_repo)
+      return nil unless git_repo
+
+      relative_path = relative_path_in_repo(full_path, git_repo)
+      relative_path && git_repo.index[relative_path]
     end
 
     def self.relative_path_in_repo(full_path, git_repo)

@@ -114,6 +114,16 @@ class TestDirectory < Minitest::Test
     assert_raises(Swhid::ValidationError) { Swhid.from_directory(entries) }
   end
 
+  def test_rejects_duplicate_entry_names_separated_by_sort_order
+    entries = [
+      { name: "foo", type: :file, target: "94a9ed024d3859793618152ea559a168bbcbb5e2" },
+      { name: "foo.txt", type: :file, target: "84a9ed024d3859793618152ea559a168bbcbb5e1" },
+      { name: "foo", type: :dir, target: "74a9ed024d3859793618152ea559a168bbcbb5e0" }
+    ]
+
+    assert_raises(Swhid::ValidationError) { Swhid.from_directory(entries) }
+  end
+
   def test_rejects_invalid_entry_names
     ["path/name", "null\0name"].each do |name|
       assert_raises(Swhid::ValidationError) do

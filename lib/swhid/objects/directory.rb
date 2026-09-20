@@ -76,9 +76,15 @@ module Swhid
           end
         end
 
+        entry_names = {}
+        entries.each do |entry|
+          name = entry.name.b
+          raise ValidationError, "Duplicate directory entry name: #{entry.name}" if entry_names.key?(name)
+
+          entry_names[name] = true
+        end
+
         sorted_entries = entries.sort_by(&:sort_key)
-        duplicate = sorted_entries.each_cons(2).find { |left, right| left.name.b == right.name.b }
-        raise ValidationError, "Duplicate directory entry name: #{duplicate.first.name}" if duplicate
 
         sorted_entries.map do |entry|
           name_binary = entry.name.b

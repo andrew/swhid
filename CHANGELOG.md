@@ -1,5 +1,23 @@
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-20
+
+### Added
+- `Swhid.from_content_io` for hashing content from an IO without loading the entire value into memory
+- Benchmarks for large content, directories, snapshots, and Git-backed identifiers
+
+### Changed
+- Validate and canonicalize qualified SWHIDs, including nested identifiers and line and byte ranges
+- Limit snapshots to `HEAD`, local branches, and tags
+- Read Gitlink entries from the Git index when hashing filesystem directories
+- Stream file content and reuse verified Git object IDs when computing identifiers
+- Delay loading Rugged until a Git-backed API is called
+
+### Fixed
+- Reject duplicate or invalid directory entries and snapshot branch names
+- Sort directory and snapshot names by raw bytes
+- Accept `Swhid::Identifier` objects as directory targets without using Ruby object identity
+
 ## [0.4.2] - 2026-01-14
 
 ### Fixed

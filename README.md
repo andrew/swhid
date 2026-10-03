@@ -156,92 +156,65 @@ swhid = Swhid::Identifier.new(
     visit: "swh:1:snp:d7f1b9eb7ccb596c2622c4780febaa02549830f9",
     anchor: "swh:1:rev:2db189928c94d62a3b4757b3eec68f0a4d4113f0",
     path: "/src/main.rb",
-    lines: "10-20",
-    bytes: "0-100"
+    lines: "10-20"
   }
 )
 
 puts swhid.to_s
-# => "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;origin=https://github.com/example/repo;visit=swh:1:snp:...;anchor=swh:1:rev:...;path=/src/main.rb;lines=10-20;bytes=0-100"
+# => "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;origin=https://github.com/example/repo;visit=swh:1:snp:...;anchor=swh:1:rev:...;path=/src/main.rb;lines=10-20"
 ```
 
 ### CLI Usage
 
-The gem includes a command-line tool for working with SWHIDs:
+Every command defaults to labeled text output. Options follow the command and can appear before or after its positional arguments.
 
-**Parse a SWHID**
-
-```bash
-$ swhid parse "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2"
-SWHID: swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2
-Core:  swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2
+```console
+$ printf 'hello world\n' | swhid content
+SWHID: swh:1:cnt:3b18e512dba79e4c8300dd08aeb37f8e728b8dad
+Core:  swh:1:cnt:3b18e512dba79e4c8300dd08aeb37f8e728b8dad
 Type:  cnt
-Hash:  94a9ed024d3859793618152ea559a168bbcbb5e2
+Hash:  3b18e512dba79e4c8300dd08aeb37f8e728b8dad
 ```
 
-**Generate SWHID from file content**
+Use `--format raw` for a bare identifier, including in scripts that previously used the default output. `content` reads binary data from stdin and spools it to a temporary file while hashing; it does not accept filenames.
 
 ```bash
-$ cat file.txt | swhid content
-swh:1:cnt:9daeafb9864cf43055ae93beb0afd6c7d144bfa4
-
-$ echo "Hello, World!" | swhid content
-swh:1:cnt:96898574d1b88e619be24fd90bb4cd399acbc5ca
+swhid parse 'swh:1:cnt:3b18e512dba79e4c8300dd08aeb37f8e728b8dad'
+cat file.txt | swhid content --format raw
+swhid directory /path/to/directory --format raw
+swhid revision /path/to/repo HEAD --format raw
+swhid release /path/to/repo tag-name --format raw
+swhid snapshot /path/to/repo --format raw
+swhid --version
 ```
 
-**Generate SWHID from directory**
+`revision` defaults to `HEAD` and resolves annotated tags to their commits. `release` requires an annotated tag. Snapshots include `HEAD`, local branches, and tags, including a detached `HEAD`.
 
-```bash
-$ swhid directory /path/to/directory
-swh:1:dir:4b825dc642cb6eb9a060e54bf8d69288fbee4904
-```
+The output formats match the Go CLI:
 
-**Generate SWHID from git commit**
+- `text`: labeled SWHID, core identifier, type, hash, and qualifiers.
+- `raw`: the SWHID followed by a newline.
+- `json`: an indented JSON object.
+- `jsonl`: the same JSON object on one line, with one record per invocation.
 
-```bash
-$ swhid revision /path/to/repo
-swh:1:rev:bc0195aad0daa2ad5b0d76cce22b167bc3435590
-
-$ swhid revision /path/to/repo main
-swh:1:rev:bc0195aad0daa2ad5b0d76cce22b167bc3435590
-
-$ swhid revision /path/to/repo abc123
-swh:1:rev:bc0195aad0daa2ad5b0d76cce22b167bc3435590
-```
-
-**Generate SWHID from git tag**
-
-```bash
-$ swhid release /path/to/repo v1.0.0
-swh:1:rel:2b10839e32c4c476e9d94492756bb1a3e1ec4aa8
-```
-
-**Generate SWHID from git snapshot**
-
-```bash
-$ swhid snapshot /path/to/repo
-swh:1:snp:6e65b86363953b780d92b0a928f3e8fcdd10db36
-```
-
-**Add qualifiers**
-
-```bash
-$ cat file.txt | swhid content -q origin=https://github.com/example/repo -q lines=1-10
-swh:1:cnt:9daeafb9864cf43055ae93beb0afd6c7d144bfa4;origin=https://github.com/example/repo;lines=1-10
-```
-
-**JSON output**
-
-```bash
-$ swhid parse "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2" -f json
+```console
+$ printf 'hello world\n' | swhid content --format json
 {
-  "swhid": "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2",
-  "core": "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2",
+  "swhid": "swh:1:cnt:3b18e512dba79e4c8300dd08aeb37f8e728b8dad",
+  "core": "swh:1:cnt:3b18e512dba79e4c8300dd08aeb37f8e728b8dad",
   "object_type": "cnt",
-  "object_hash": "94a9ed024d3859793618152ea559a168bbcbb5e2",
+  "object_hash": "3b18e512dba79e4c8300dd08aeb37f8e728b8dad",
   "qualifiers": {}
 }
 ```
+
+Add qualifiers to generated identifiers with repeatable `-q KEY=VALUE` options. Duplicate keys and `-q` on `parse` are errors.
+
+```bash
+cat file.txt | swhid content --format jsonl -q path=/src/main.rb -q lines=1-10
+```
+
+Exit status `0` means success, `1` reports invalid input or a filesystem, Git, or hashing failure, and `2` reports command-line usage errors. Results go to stdout and errors go to stderr. `swhid --help` prints general help to stdout; `swhid content --help` prints command help to stderr.
 
 ## Object Types
 
@@ -261,6 +234,8 @@ SWHIDs can include optional qualifiers to provide context:
 - **path**: Absolute file path from the root directory
 - **lines**: Line range (e.g., "10-20")
 - **bytes**: Byte range (e.g., "100-500")
+
+`lines` and `bytes` apply only to content and cannot be combined. Line numbers start at 1; byte offsets start at 0. `path` applies to content and directories. Qualifier values are percent-encoded when needed, and parsing rejects duplicate keys, unknown qualifiers, and malformed escapes.
 
 ## Git Compatibility
 

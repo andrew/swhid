@@ -29,13 +29,13 @@ class TestSwhid < Minitest::Test
 
   def test_parse_qualifiers_preserves_plus_and_decodes_semicolon
     swhid = Swhid.parse(
-      "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;origin=a+b%3Bc;path=/a%3Bb"
+      "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;origin=https://example.com/a+b%3Bc;path=/a%3Bb"
     )
 
-    assert_equal "a+b;c", swhid.qualifiers[:origin]
+    assert_equal "https://example.com/a+b;c", swhid.qualifiers[:origin]
     assert_equal "/a;b", swhid.qualifiers[:path]
     assert_equal(
-      "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;origin=a+b%3Bc;path=/a%3Bb",
+      "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;origin=https://example.com/a+b%3Bc;path=/a%3Bb",
       swhid.to_s
     )
   end
@@ -54,17 +54,29 @@ class TestSwhid < Minitest::Test
     end
   end
 
-  def test_parse_canonicalizes_range_qualifiers
-    swhid = Swhid.parse(
-      "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;lines=001-002;bytes=000"
-    )
+  def test_parse_preserves_valid_range_qualifiers
+    { lines: "001-002", bytes: "000" }.each do |key, value|
+      string = "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;#{key}=#{value}"
+      swhid = Swhid.parse(string)
+      assert_equal value, swhid.qualifiers[key]
+      assert_equal string, swhid.to_s
+    end
+  end
 
-    assert_equal "1-2", swhid.qualifiers[:lines]
-    assert_equal "0", swhid.qualifiers[:bytes]
-    assert_equal(
-      "swh:1:cnt:94a9ed024d3859793618152ea559a168bbcbb5e2;lines=1-2;bytes=0",
-      swhid.to_s
-    )
+  def test_qualifier_object_types
+    hash = "94a9ed024d3859793618152ea559a168bbcbb5e2"
+    { "dir" => [{ lines: "1" }, { bytes: "0" }],
+      "rev" => [{ path: "/file" }], "rel" => [{ path: "/file" }],
+      "snp" => [{ path: "/file" }] }.each do |type, qualifiers|
+      qualifiers.each do |values|
+        assert_raises(Swhid::ValidationError) do
+          Swhid.parse("swh:1:#{type}:#{hash};#{values.first.join('=')}")
+        end
+      end
+    end
+    identifier = Swhid.parse("swh:1:cnt:#{hash};visit=swh:1:snp:#{hash};anchor=swh:1:rev:#{hash};path=/file;bytes=0")
+    assert_equal "swh:1:snp:#{hash}", identifier.qualifiers[:visit]
+    assert_equal "swh:1:rev:#{hash}", identifier.qualifiers[:anchor]
   end
 
   def test_parse_rejects_invalid_swhid_qualifiers

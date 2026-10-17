@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "uri"
+
 module Swhid
   class Identifier
     attr_reader :scheme, :version, :object_type, :object_hash, :qualifiers
@@ -14,10 +16,11 @@ module Swhid
 
     def self.parse(swhid_string)
       raise ParseError, "SWHID string cannot be nil or empty" if swhid_string.nil? || swhid_string.empty?
+      raise ParseError, "Whitespace is not allowed in a SWHID" if swhid_string.match?(/\p{Space}/)
 
       core_part, qualifier_string = swhid_string.split(";", 2)
 
-      parts = core_part.split(":")
+      parts = core_part.split(":", -1)
       raise ParseError, "Invalid SWHID format" unless parts.length == 4
 
       scheme, version, object_type, object_hash = parts
@@ -76,24 +79,25 @@ module Swhid
       qualifiers = {}
       return qualifiers unless qualifier_string
 
+      raise ParseError, "Empty qualifier" if qualifier_string.empty?
+
       qualifier_string.split(";", -1).each do |part|
-        next if part.empty?
+        raise ParseError, "Empty qualifier" if part.empty?
 
         key, value = part.split("=", 2)
         raise ParseError, "Invalid qualifier: #{part}" if key.nil? || key.empty? || value.nil?
+        raise ParseError, "Duplicate qualifier: #{key}" if qualifiers.key?(key.to_sym)
 
-        qualifiers[key.to_sym] = if key == "origin" || key == "path"
-                                    decode_qualifier_value(key, value)
-                                  else
-                                    value
-                                  end
+        qualifiers[key.to_sym] = decode_qualifier_value(key, value)
       end
 
       qualifiers
     end
 
     def self.decode_qualifier_value(key, value)
-      decoded = value.gsub(/%([0-9a-fA-F]{2})/) { [$1].pack("H2") }
+      raise ParseError, "Invalid percent escape in #{key} qualifier" if value.match?(/%(?![0-9a-fA-F]{2})/)
+
+      decoded = value.b.gsub(/%([0-9a-fA-F]{2})/) { [$1].pack("H2") }
       decoded.force_encoding(Encoding::UTF_8)
       return decoded if decoded.valid_encoding?
 
@@ -107,19 +111,16 @@ module Swhid
         next unless quals.key?(key)
 
         value = quals[key]
-        value = encode_qualifier_value(value) if key == :origin || key == :path
+        value = encode_qualifier_value(value, key) if key == :origin || key == :path
         "#{key}=#{value}"
       end.compact
 
-      other_quals = quals.reject { |key, _| canonical_order.include?(key) }.map do |key, value|
-        "#{key}=#{value}"
-      end
-
-      (ordered_quals + other_quals).join(";")
+      ordered_quals.join(";")
     end
 
-    def encode_qualifier_value(value)
-      value.to_s.gsub(";", "%3B")
+    def encode_qualifier_value(value, key)
+      pattern = key == :path ? /[%;?#\p{Space}]/ : /[%;\p{Space}]/
+      value.to_s.gsub(pattern) { |character| character.bytes.map { |byte| "%%%02X" % byte }.join }
     end
 
     def validate_qualifiers!(qualifiers)
@@ -127,34 +128,57 @@ module Swhid
         raise ValidationError, "Qualifiers must be a hash"
       end
 
-      qualifiers.each_pair.each_with_object({}) do |(key, value), validated|
+      validated = qualifiers.each_pair.each_with_object({}) do |(key, value), result|
         key = key.to_s
-        unless key.match?(/\A[^;=]+\z/)
+        unless %w[origin visit anchor path lines bytes].include?(key)
           raise ValidationError, "Invalid qualifier key: #{key}"
         end
 
-        validated[key.to_sym] = normalize_qualifier_value(key, value)
+        result[key.to_sym] = normalize_qualifier_value(key, value)
       end
+
+      if validated.key?(:lines) && validated.key?(:bytes)
+        raise ValidationError, "Lines and bytes cannot be combined"
+      end
+      if object_type != "cnt" && (validated.key?(:lines) || validated.key?(:bytes))
+        raise ValidationError, "Fragment qualifiers require content"
+      end
+      if validated.key?(:path) && !%w[cnt dir].include?(object_type)
+        raise ValidationError, "Path requires content or directory"
+      end
+      validated
     end
 
     def normalize_qualifier_value(key, value)
+      string = value.to_s
+      unless string.valid_encoding? && !string.match?(/\p{Cc}/)
+        raise ValidationError, "Invalid characters in #{key} qualifier"
+      end
+
       case key
-      when "origin", "path"
-        string = value.to_s
-        raise ValidationError, "Invalid UTF-8 in #{key} qualifier" unless string.valid_encoding?
+      when "origin"
+        uri = URI.parse(URI::RFC2396_PARSER.escape(string))
+        raise ValidationError, "Origin must be an absolute URI" unless uri.absolute?
+        string
+      when "path"
+        raise ValidationError, "Path must be absolute" unless string.start_with?("/")
         string
       when "visit", "anchor"
-        parsed = value.is_a?(Identifier) ? value : Identifier.parse(value.to_s)
+        parsed = value.is_a?(Identifier) ? value : Identifier.parse(string)
         unless parsed.qualifiers.empty?
           raise ValidationError, "Invalid #{key} qualifier: expected a core SWHID"
         end
+        if key == "visit" && parsed.object_type != "snp"
+          raise ValidationError, "Visit must identify a snapshot"
+        end
+        if key == "anchor" && parsed.object_type == "cnt"
+          raise ValidationError, "Anchor cannot identify content"
+        end
         parsed.core_swhid
       when "lines", "bytes"
-        normalize_range_qualifier!(key, value.to_s)
-      else
-        value
+        normalize_range_qualifier!(key, string)
       end
-    rescue ParseError, ValidationError
+    rescue ParseError, URI::InvalidURIError
       raise ValidationError, "Invalid #{key} qualifier: #{value}"
     end
 
@@ -166,11 +190,12 @@ module Swhid
       end_position = match[2] && Integer(match[2], 10)
       max_position = (2**64) - 1
 
-      if start_position > max_position || (end_position && (end_position < start_position || end_position > max_position))
+      minimum = key == "lines" ? 1 : 0
+      if start_position < minimum || start_position > max_position || (end_position && (end_position < start_position || end_position > max_position))
         raise ValidationError, "Invalid #{key} qualifier: #{value}"
       end
 
-      end_position ? "#{start_position}-#{end_position}" : start_position.to_s
+      value
     end
   end
 end

@@ -1,5 +1,17 @@
 ## [Unreleased]
 
+### Changed
+- Align CLI output with the Go tool: labeled text by default, plus explicit `raw`, `json`, and `jsonl` formats
+- Report the gem version with `version` and `--version`
+- Send errors to stderr and return status 2 for invalid command-line usage
+- Reject unknown commands, unsupported formats, extra arguments, malformed or duplicate qualifier options, and qualifiers added to `parse`
+- Spool CLI content input to a temporary file before hashing
+- Align qualifier validation and escaping with the Go tool, preserving valid range strings
+
+### Fixed
+- Include detached `HEAD` in Git snapshots
+- Resolve annotated tags to commits for revision identifiers
+
 ## [0.5.0] - 2026-09-20
 
 ### Added

@@ -7,6 +7,7 @@ module Swhid
     def self.from_revision(repo_path, ref = "HEAD")
       repo = open_repository(repo_path)
       commit = repo.rev_parse(ref)
+      commit = commit.target while commit.is_a?(Rugged::Tag::Annotation)
 
       raise ArgumentError, "Reference #{ref} is not a commit" unless commit.is_a?(Rugged::Commit)
 
@@ -46,6 +47,12 @@ module Swhid
             name: "HEAD",
             target_type: "alias",
             target: target_ref
+          }
+        else
+          branches << {
+            name: "HEAD",
+            target_type: reference_target_type(repo, head_content),
+            target: head_content
           }
         end
       end
